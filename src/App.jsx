@@ -332,6 +332,12 @@ function App() {
     setShowModalInvoice(false);
     localStorage.setItem("data", JSON.stringify([]));
     setSelectedBooks([]);
+    setDataCustomer({
+      name: "Trường đại học Công nghệ Thành phố Hồ Chí Minh - HUTECH",
+      phone: "02835120785",
+      address:
+        "10/80c Song Hành Xa Lộ Hà Nội, Phường Tân Phú, Quận 9, Hồ Chí Minh",
+    });
   }, []);
 
   // Tính thành tiền
