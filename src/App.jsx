@@ -6,6 +6,7 @@ import {
   List,
   message,
   Modal,
+  Table,
   Tooltip,
 } from "antd";
 import sach1 from "./assets/sach-1.jpg";
@@ -14,9 +15,12 @@ import sach3 from "./assets/sach-3.jpg";
 import sach4 from "./assets/sach-4.jpg";
 import sach5 from "./assets/sach-5.jpg";
 import sach6 from "./assets/sach-6.jpg";
+import logoHutech from "./assets/logo-hutech.webp";
+import paidImg from "./assets/paid.png";
 import Marquee from "react-fast-marquee";
 import {
   DeleteOutlined,
+  DownloadOutlined,
   EnvironmentOutlined,
   MinusCircleOutlined,
   PhoneOutlined,
@@ -24,8 +28,9 @@ import {
   ShoppingCartOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { NumericFormat } from "react-number-format";
+import { Margin, Resolution, usePDF } from "react-to-pdf";
 
 const bookList = [
   {
@@ -79,13 +84,101 @@ const bookList = [
 ];
 
 function App() {
+  const date = new Date();
+  const { toPDF, targetRef } = usePDF({
+    method: "save",
+    resolution: Resolution.HIGH,
+    page: {
+      orientation: "landscape",
+      format: "letter",
+      margin: Margin.MEDIUM,
+    },
+    filename: `invoice_${date.getFullYear()}-${(date.getMonth() + 1)
+      .toString()
+      .padStart(2, "0")}-${date.getDate().toString().padStart(2, "0")}_${date
+      .getHours()
+      .toString()
+      .padStart(2, "0")}-${date.getMinutes().toString().padStart(2, "0")}-${date
+      .getSeconds()
+      .toString()
+      .padStart(2, "0")}.pdf`,
+  });
   const [messageApi, contextHolder] = message.useMessage();
   const getDataLocal = localStorage.getItem("data");
   const defaultData = getDataLocal ? JSON.parse(getDataLocal) : [];
   const [selectedBooks, setSelectedBooks] = useState(defaultData);
   const [showModalCart, setShowModalCart] = useState(false);
   const [showModalInfo, setShowModalInfo] = useState(false);
+  const [showModalInvoice, setShowModalInvoice] = useState(false);
   const [total, setTotal] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [dataCustomer, setDataCustomer] = useState({
+    name: "Trường đại học Công nghệ Thành phố Hồ Chí Minh - HUTECH",
+    phone: "02835120785",
+    address:
+      "10/80c Song Hành Xa Lộ Hà Nội, Phường Tân Phú, Quận 9, Hồ Chí Minh",
+  });
+
+  const columns = useMemo(
+    () => [
+      {
+        title: "Tiêu đề sách",
+        dataIndex: "name",
+        key: "name",
+        render: (text, record, index) => {
+          const isLastRow = index === selectedBooks.length;
+          return (
+            <span style={{ fontWeight: isLastRow ? "bold" : "normal" }}>
+              {text}
+            </span>
+          );
+        },
+      },
+      {
+        title: "Giá tiền",
+        dataIndex: "discount",
+        key: "discount",
+        align: "center",
+        render: (text) => (
+          <NumericFormat value={text} thousandSeparator displayType="text" />
+        ),
+      },
+      {
+        title: "Số lượng",
+        dataIndex: "quantity",
+        key: "quantity",
+        align: "center",
+        render: (value, record, index) => {
+          const isLastRow = index === selectedBooks.length;
+          return isLastRow ? (
+            <div className="font-bold text-[1.05rem]">{value}:</div>
+          ) : (
+            <NumericFormat value={value} thousandSeparator displayType="text" />
+          );
+        },
+      },
+      {
+        title: "Thành tiền",
+        key: "total",
+        align: "center",
+        dataIndex: "total",
+        render: (value, record, index) => {
+          const total = record.discount * record.quantity;
+          const isLastRow = index === selectedBooks.length;
+
+          return (
+            <NumericFormat
+              value={value || total}
+              thousandSeparator
+              displayType="text"
+              className={isLastRow ? "font-bold text-[1.05rem]" : ""}
+            />
+          );
+        },
+      },
+    ],
+    [selectedBooks]
+  );
 
   // Hàm xử lý khi nhấn nút "THÊM VÀO GIỎ HÀNG"
   const handleAddToCard = useCallback(
@@ -199,6 +292,47 @@ function App() {
     },
     [selectedBooks]
   );
+
+  // Hàm xử lý khi nhập vào thông tin khách hàng ( Họ tên, SDT, Địa chỉ )
+  const handleChange = useCallback(
+    (field, newValue) => {
+      const updatedData = {
+        ...dataCustomer,
+        [field]: newValue,
+      };
+
+      setDataCustomer(updatedData);
+    },
+    [dataCustomer]
+  );
+
+  // Hàm in hóa đơn
+  const handleExportInvoice = useCallback(() => {
+    toPDF();
+  }, [toPDF]);
+
+  const handleOkModalInfo = useCallback(() => {
+    setIsLoading(true);
+
+    setTimeout(() => {
+      message.success(
+        "Thanh toán thành công. Hóa đơn của bạn sẽ được hiển thị trong giây lát"
+      );
+    }, 500);
+
+    setTimeout(() => {
+      setIsLoading(false);
+      setShowModalCart(false);
+      setShowModalInfo(false);
+      setShowModalInvoice(true);
+    }, 2000);
+  }, []);
+
+  const handleCancelModalInvoice = useCallback(() => {
+    setShowModalInvoice(false);
+    localStorage.setItem("data", JSON.stringify([]));
+    setSelectedBooks([]);
+  }, []);
 
   // Tính thành tiền
   useEffect(() => {
@@ -335,7 +469,12 @@ function App() {
           <Button key="cancel" onClick={handleCancel}>
             Tiếp tục mua
           </Button>,
-          <Button key="ok" type="primary" onClick={handleOk}>
+          <Button
+            disabled={selectedBooks.length === 0}
+            key="ok"
+            type="primary"
+            onClick={handleOk}
+          >
             Thanh toán và xuất hóa đơn
           </Button>,
         ]}
@@ -437,27 +576,113 @@ function App() {
         okText="Tiếp tục"
         cancelText="Đóng"
         onCancel={() => setShowModalInfo(false)}
+        onOk={handleOkModalInfo}
+        maskClosable={false}
+        okButtonProps={{
+          loading: isLoading,
+        }}
         title={
           <span className="uppercase text-[1.1rem] text-blue-700">
             Nhập thông tin nhận hàng
           </span>
         }
       >
+        <div>
+          Có thể bỏ qua và nhấn <span className="font-bold">Tiếp tục</span> để
+          sử dụng thông tin mặc định
+        </div>
         <div className="flex flex-col gap-y-5 mt-7 mb-5">
           <Input
             size="large"
             placeholder="Họ và tên"
+            onChange={(e) => handleChange("name", e.target.value)}
             prefix={<UserOutlined />}
           />
           <Input
             size="large"
             placeholder="Số điện thoại"
             prefix={<PhoneOutlined />}
+            onChange={(e) => handleChange("phone", e.target.value)}
           />
           <Input
             size="large"
             placeholder="Địa chỉ nhận hàng"
             prefix={<EnvironmentOutlined />}
+            onChange={(e) => handleChange("address", e.target.value)}
+          />
+        </div>
+      </Modal>
+
+      <Modal
+        open={showModalInvoice}
+        width={"80%"}
+        maskClosable={false}
+        closeIcon={false}
+        footer={[
+          <Button key="cancel" onClick={handleCancelModalInvoice}>
+            Đóng
+          </Button>,
+          <Button key="ok" type="primary" onClick={handleExportInvoice}>
+            <DownloadOutlined /> Tải xuống hóa đơn
+          </Button>,
+        ]}
+      >
+        {/* In hóa đơn */}
+        <div ref={targetRef}>
+          <div className="flex items-center justify-center flex-col gap-y-5">
+            <img src={logoHutech} width={200} />
+
+            <div className="flex flex-col items-center mb-2">
+              <div className="text-[1.5rem] text-blue-700 font-bold">
+                HÓA ĐƠN ĐIỆN TỬ
+              </div>
+              <div>
+                Số hóa đơn:{" "}
+                <span className="text-red-500 font-bold">A0001</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-x-2">
+            <div className="flex flex-col gap-y-2 w-[10%]">
+              <div>Khách hàng:</div>
+              <div>Số điện thoại:</div>
+              <div>Địa chỉ:</div>
+            </div>
+
+            <div className="flex flex-col gap-y-2 w-full">
+              <div>{dataCustomer.name}</div>
+              <div>{dataCustomer.phone}</div>
+              <div>{dataCustomer.address}</div>
+            </div>
+          </div>
+
+          <div className="relative mt-4 mb-2 flex justify-between items-center ">
+            <div className="text-[1.1rem] font-bold text-blue-700 ">
+              Danh sách sản phẩm
+            </div>
+            <div>
+              TP.HCM, ngày {date.getDate()} tháng {date.getMonth() + 1} năm{" "}
+              {date.getFullYear()}
+            </div>
+
+            <div className="absolute right-0 -top-[180px] z-[99] select-none">
+              <img src={paidImg} width={250} />
+            </div>
+          </div>
+
+          <Table
+            bordered
+            className="mb-4"
+            dataSource={[
+              ...selectedBooks,
+              {
+                quantity: "Tổng",
+                total: total,
+              },
+            ]}
+            columns={columns}
+            pagination={false}
           />
         </div>
       </Modal>
